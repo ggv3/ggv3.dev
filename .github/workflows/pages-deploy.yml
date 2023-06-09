@@ -9,7 +9,7 @@ on:
       - LICENSE
 
 jobs:
-  copy-files:
+  build-and-deploy:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,14 +22,22 @@ jobs:
           ruby-version: 3 # reads from a '.ruby-version' or '.tools-version' file if 'ruby-version' is omitted
           bundler-cache: true
 
-      - name: Install dependencies
-        run: bundle install
-
-      - name: Build
-        run: bundle exec jekyll b
-
-      - name: Deploy
+      - name: Add SSH key
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
         run: |
-          eval "$(ssh-agent -s)"
-          ssh-add - <<< ${{ secrets.PRIVATE_SSH_KEY }}
-          ssh runner@ggv3.dev "sudo bash -c 'rsync -av --delete _site/ /var/www/ggv3/ && systemctl restart nginx'"
+          mkdir -p /home/runner/.ssh
+          ssh-keyscan ggv3.dev >> /home/runner/.ssh/known_hosts
+          echo "${{ secrets.PRIVATE_SSH_KEY }}" > /home/runner/.ssh/github_actions
+          chmod 600 /home/runner/.ssh/github_actions
+          ssh-agent -a $SSH_AUTH_SOCK > /dev/null	
+          ssh-add /home/runner/.ssh/github_actions
+
+      - name: Build and deploy
+        env:
+          SSH_AUTH_SOCK: /tmp/ssh_agent.sock
+        run: |
+          bundle install
+          bundle exec jekyll b
+          rsync -av --delete /home/runner/work/ggv3.dev/ggv3.dev/_site/ runner@ggv3.dev:/var/www/ggv3/
+          ssh runner@ggv3.dev "sudo bash -c 'sudo systemctl restart nginx'"

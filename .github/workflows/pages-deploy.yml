@@ -1,0 +1,35 @@
+name: "Build and Deploy"
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - .gitignore
+      - README.md
+      - LICENSE
+
+jobs:
+  copy-files:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3 # reads from a '.ruby-version' or '.tools-version' file if 'ruby-version' is omitted
+          bundler-cache: true
+
+      - name: Install dependencies
+        run: bundle install
+
+      - name: Build
+        run: bundle exec jekyll b
+
+      - name: Deploy
+        run: |
+          eval "$(ssh-agent -s)"
+          ssh-add - <<< ${{ secrets.PRIVATE_SSH_KEY }}
+          ssh runner@ggv3.dev "sudo bash -c 'rsync -av --delete _site/ /var/www/ggv3/ && systemctl restart nginx'"
